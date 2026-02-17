@@ -150,8 +150,8 @@ Redis에서는 `DECR`(단일 키) / Lua 스크립트(다중 키), 본 구현에�
 src/main/kotlin/com/trip/hotel/
 ├── TripApplication.kt
 ├── domain/
-│   ├── entity/          Hotel, RoomType, Inventory, Reservation, ReservationStatus
-│   └── repository/      HotelRepository, RoomTypeRepository, InventoryRepository, ReservationRepository
+│   ├── entity/          Hotel, RoomType, Inventory, Reservation, ReservationStatus, Guest
+│   └── repository/      HotelRepository, RoomTypeRepository, InventoryRepository, ReservationRepository, GuestRepository
 ├── service/             InventoryService, ReservationService, InventoryCounterService
 ├── config/              OpenApiConfig, InventoryCounterInitializer
 ├── controller/          InventoryController, ReservationController
@@ -164,7 +164,8 @@ src/main/resources/
 ├── application.properties
 └── db/migration/
     ├── V1__create_schema.sql      DDL (hotel, room_type, inventory, reservation)
-    └── V2__insert_sample_data.sql  시드 데이터 (호텔 2, 룸타입 5, 30일 재고)
+    ├── V2__insert_sample_data.sql  시드 데이터 (호텔 2, 룸타입 5, 30일 재고)
+    └── V3__create_guest_table.sql  guest 테이블 생성 + reservation FK 마이그레이션
 ```
 
 | 레이어 | 역할 |
@@ -225,7 +226,7 @@ assertThat(successCount.get()).isEqualTo(3)
 ```
 hotel (1) ──── (N) room_type (1) ──── (N) inventory
                         │
-                        └──── (N) reservation
+                        └──── (N) reservation (N) ──── (1) guest
 ```
 
 | 테이블 | 설명 |
@@ -234,3 +235,9 @@ hotel (1) ──── (N) room_type (1) ──── (N) inventory
 | `room_type` | 객실 타입 (호텔에 종속) |
 | `inventory` | 날짜별 재고 (unique: room_type_id + date) |
 | `reservation` | 예약 (soft delete: CONFIRMED/CANCELLED) |
+| `guest` | 투숙객 (email UNIQUE, 동일 이메일 시 재사용) |
+
+## AI 어시스턴트 설정
+
+- `CLAUDE.md` — Claude Code 프로젝트 지침
+- `.claude/skills/` — AI 코딩 규칙 및 패턴

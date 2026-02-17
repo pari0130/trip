@@ -7,6 +7,18 @@ description: 호텔 예약 도메인 규칙 — 예약 생명주기, 상태 전�
 
 > 재고 제약조건, 동시성 제어는 `hotel-inventory-domain` skill 참조
 
+## Guest 연관관계
+
+- Reservation은 `@ManyToOne guest: Guest`로 투숙객을 참조
+- Guest는 `email UNIQUE` — 동일 이메일의 고객은 하나의 레코드로 관리
+- 예약 생성 시 findOrCreate 패턴: `guestRepository.findByEmail(email) ?: save(new Guest)`
+- Request DTO는 여전히 `guestName`, `guestEmail`을 직접 받고, Service에서 Guest로 변환
+
+## 조회 최적화
+
+- `ReservationRepository.findById()`에 `@EntityGraph(attributePaths = ["roomType", "guest"])` 적용
+- Reservation + RoomType + Guest를 JOIN 1회로 조회 (N+1 방지)
+
 ## 예약 생명주기
 
 ```
