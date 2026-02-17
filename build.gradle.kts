@@ -51,6 +51,21 @@ tasks.withType<Test> {
 	useJUnitPlatform()
 }
 
+tasks.register("installGitHooks") {
+	description = "Git hooks 경로를 scripts/git-hooks로 설정"
+	group = "setup"
+	doLast {
+		exec {
+			commandLine("git", "config", "core.hooksPath", "scripts/git-hooks")
+		}
+		println("[setup] Git hooks 경로 설정 완료: scripts/git-hooks")
+	}
+}
+
+tasks.named("build") {
+	dependsOn("installGitHooks")
+}
+
 ktlint {
 	version.set("1.1.1")
 	android.set(false)

@@ -1,0 +1,32 @@
+#!/bin/bash
+# Git Pre-commit Hook: ktlint 검사 → 실패 시 자동 수정 → 재검사
+#
+# 설치: git config core.hooksPath scripts/git-hooks
+
+JAVA_HOME=$(/usr/libexec/java_home -v 21)
+export JAVA_HOME
+
+echo "[pre-commit] ktlint 검사 중..."
+
+./gradlew ktlintCheck -q 2>&1
+if [ $? -eq 0 ]; then
+  echo "[pre-commit] ktlint 통과"
+  exit 0
+fi
+
+echo "[pre-commit] lint 위반 발견. 자동 수정 중..."
+./gradlew ktlintFormat -q 2>&1
+
+# 수정된 파일을 staging에 추가
+git diff --name-only | grep '\.kt$' | xargs -r git add
+
+echo "[pre-commit] 자동 수정 완료. 재검사 중..."
+./gradlew ktlintCheck -q 2>&1
+
+if [ $? -ne 0 ]; then
+  echo ""
+  echo "[pre-commit] 자동 수정으로 해결할 수 없는 lint 에러가 있습니다. 직접 수정해주세요."
+  exit 1
+fi
+
+echo "[pre-commit] ktlint 통과"
