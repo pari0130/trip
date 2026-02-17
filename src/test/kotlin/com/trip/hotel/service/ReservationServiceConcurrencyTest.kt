@@ -20,6 +20,9 @@ class ReservationServiceConcurrencyTest {
 	@Autowired
 	private lateinit var inventoryRepository: InventoryRepository
 
+	@Autowired
+	private lateinit var inventoryCounterService: InventoryCounterService
+
 	@Test
 	@DisplayName("10개 스레드 동시 예약 - 재고만큼만 성공")
 	fun concurrentReservation_exactInventoryCount() {
@@ -111,5 +114,55 @@ class ReservationServiceConcurrencyTest {
 		// then: 재고 3개 → 정확히 3개만 성공
 		assertEquals(3, successCount.get())
 		assertEquals(7, failCount.get())
+	}
+
+	@Test
+	@DisplayName("동시 예약 후 카운터-DB 재고 일치 검증")
+	fun concurrentReservation_counterMatchesDb() {
+		// given: 스탠다드 오션뷰 (roomTypeId=4) 재고 8실
+		val threadCount = 12
+		val checkInDate = LocalDate.now()
+		val checkOutDate = LocalDate.now().plusDays(1)
+		val request =
+			CreateReservationRequest(
+				roomTypeId = 4,
+				guestName = "테스트",
+				guestEmail = "test@test.com",
+				checkInDate = checkInDate,
+				checkOutDate = checkOutDate,
+				numberOfRooms = 1
+			)
+
+		val executorService = Executors.newFixedThreadPool(threadCount)
+		val latch = CountDownLatch(threadCount)
+		val successCount = AtomicInteger(0)
+
+		// when
+		repeat(threadCount) {
+			executorService.submit {
+				try {
+					reservationService.createReservation(request)
+					successCount.incrementAndGet()
+				} catch (_: Exception) {
+				} finally {
+					latch.countDown()
+				}
+			}
+		}
+		latch.await()
+		executorService.shutdown()
+
+		// then: 카운터와 DB 재고가 일치해야 함
+		assertEquals(8, successCount.get())
+
+		val inventories = inventoryRepository.findByRoomTypeIdAndDateRange(4L, checkInDate, checkOutDate)
+		inventories.forEach { inventory ->
+			val counterValue = inventoryCounterService.getCount(4, inventory.date)
+			assertEquals(
+				inventory.availableQuantity,
+				counterValue,
+				"날짜 ${inventory.date}: DB 재고(${inventory.availableQuantity})와 카운터($counterValue)가 불일치"
+			)
+		}
 	}
 }

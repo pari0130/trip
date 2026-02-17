@@ -107,59 +107,42 @@
 
 ### 1. 동시 예약 시 재고 정합성
 
-재고는 `totalQuantity`(전체 객실 수)와 `availableQuantity`(잔여 객실 수)로 관리됩니다. 예약 시 `availableQuantity`를 차감하고, 취소 시 복원합니다(`totalQuantity`를 초과하지 않도록 상한 제한).
-
-여러 사용자가 같은 룸 타입의 같은 날짜에 동시에 예약하면, 재고가 음수가 되거나 초과 판매될 수 있습니다.
-
-```
-재고 3개 남은 상태에서 10명이 동시에 1실 예약 요청
-
-Thread A: 재고 3 확인 → 차감 → 재고 2 (성공)
-Thread B: 재고 2 확인 → 차감 → 재고 1 (성공)
-Thread C: 재고 1 확인 → 차감 → 재고 0 (성공)
-Thread D: 재고 0 확인 → 부족 → 실패
-...
-Thread J: 대기 → 재고 0 확인 → 부족 → 실패
-
-결과: 정확히 3개만 성공, 7개 실패, 재고 = 0 (음수 불가)
-```
-
-#### 이중 잠금 전략
-
 | 제어 방식 | 역할 | 구현 |
 |-----------|------|------|
-| **Pessimistic Lock** (주) | 동시 접근을 직렬화하여 순차 처리 | `SELECT ... FOR UPDATE` + `ORDER BY date` |
-| **Optimistic Lock** (보조) | Pessimistic Lock을 우회하는 경로에 대한 안전장치 | `@Version` 컬럼 |
+| **Pessimistic Lock** (주) | 동시 접근을 직렬화하여 순차 처리 | `SELECT ... FOR UPDATE` + `ORDER BY date ASC` |
+| **Optimistic Lock** (보조) | 향후 잠금 없는 경로 추가 시 lost update 방지 | `@Version` 컬럼 |
 
-- **PESSIMISTIC_WRITE**: JPA의 `@Lock(LockModeType.PESSIMISTIC_WRITE)`를 사용하며, 이는 `SELECT ... FOR UPDATE` SQL로 변환됩니다. 잠금을 획득한 트랜잭션이 커밋/롤백될 때까지 다른 트랜잭션은 해당 행의 읽기/쓰기 모두 대기합니다. 잠금 대기 시간은 `spring.jpa.properties.jakarta.persistence.lock.timeout=5000` (5초)으로 설정되어 있으며, 초과 시 `PessimisticLockException` → 503 응답을 반환합니다.
-- **@Version을 추가한 이유**: 현재 재고 변경은 모두 `FOR UPDATE`를 거치므로 `@Version` 충돌이 발생할 일은 거의 없습니다. 하지만 향후 Pessimistic Lock 없이 재고를 수정하는 코드가 추가될 경우, `@Version`이 없으면 동시 수정이 조용히 덮어쓰기(lost update)됩니다. `@Version`은 이를 예외로 감지하는 방어적 안전장치이며, UPDATE에 `AND version=?` 조건이 추가되는 정도의 무시 가능한 비용입니다.
-- **데드락 방지**: 재고 행을 잠글 때 반드시 `ORDER BY date ASC`로 잠금 순서를 일관되게 유지합니다.
+- `FOR UPDATE`로 재고 행을 잠그고, `ORDER BY date ASC`로 잠금 순서를 통일하여 데드락을 방지합니다.
+- 잠금 타임아웃 5초 (`jakarta.persistence.lock.timeout=5000`), 초과 시 503 응답.
+- `@Version`은 현재 충돌이 발생할 경로가 없지만, `FOR UPDATE` 없이 재고를 수정하는 코드가 추가될 때를 대비한 방어적 안전장치입니다.
 
-### 2. 트랜잭션과 롤백
+### 2. 대량 트래픽 대비: Cache 카운터 Pre-Filter
 
-모든 비즈니스 예외는 `RuntimeException`을 상속하므로, `@Transactional` 내에서 예외 발생 시 **자동 롤백**됩니다.
-
-```
-RuntimeException
-  └── BusinessException (abstract)
-        ├── RoomTypeNotFoundException (404)
-        ├── ReservationNotFoundException (404)
-        ├── InsufficientInventoryException (409)
-        └── InvalidReservationStateException (409)
-```
-
-- **All or Nothing**: 3박 예약 시 재고 차감 중 2일차에서 실패하면, 1일차 차감도 함께 롤백
-- JPA의 dirty checking은 트랜잭션 커밋 시점(flush)에 UPDATE 쿼리를 실행하므로, 예외 발생 시 flush 자체가 일어나지 않아 DB에는 아무것도 반영되지 않음
-- Optimistic Lock 충돌(`ObjectOptimisticLockingFailureException`)도 `RuntimeException` 계열이므로 자동 롤백 대상
-
-### 3. 예약 생명주기
+선착순 예매처럼 트래픽이 집중될 때, 재고 3개에 1,000건이 몰리면 997건은 실패 확정임에도 전부 DB 커넥션 + `FOR UPDATE` 대기열에 진입합니다. Redis `DECR` 패턴의 핵심 아이디어 — **원자적 감소 연산으로 DB 진입 전에 걸러내기** — 를 로컬 `AtomicInteger`로 구현했습니다.
 
 ```
-CONFIRMED ──취소──→ CANCELLED (단방향, 재활성화 불가)
+요청 → [카운터 tryDecrement] → 실패 → 즉시 거절 (DB 접근 없음)
+                              → 성공 → [DB FOR UPDATE + 검증 + 차감]
+                                        → 실패 → 카운터 보상(increment)
+                                        → 성공 → 완료
 ```
 
-- 취소는 soft delete 방식으로 `status`를 변경하고 재고를 복원합니다.
-- 이미 취소된 예약에 대한 재취소는 409 에러를 반환합니다.
+**Race Condition 핵심**: "조회 → 판단 → 차감"을 원자 연산으로 묶어야 합니다.
+
+Redis에서는 `DECR`(단일 키) / Lua 스크립트(다중 키), 본 구현에서는 `AtomicInteger.addAndGet()`(CAS)으로 동일 보장.
+
+**설계 제약**:
+- 카운터는 힌트이며, DB가 유일한 정합성 원천 — 카운터 통과 후에도 반드시 `FOR UPDATE`로 최종 검증
+- 다중 날짜 중간 실패 시 이미 차감한 날짜를 명시적으로 복원 (DB는 자동 롤백되지만 카운터는 트랜잭션 밖)
+- 로컬 `AtomicInteger`는 단일 인스턴스 전용 — 다중 인스턴스 시 Redis `DECR`로 교체 필요 (`tryDecrement`/`increment` 인터페이스 유지로 교체 범위 한정)
+
+### 3. 트랜잭션과 롤백
+
+모든 비즈니스 예외가 `RuntimeException` → `@Transactional` 자동 롤백. 3박 예약 중 2일차 실패 시 1일차 차감도 함께 롤백(All or Nothing). JPA dirty checking은 커밋 시점에 flush하므로 예외 시 DB 반영 자체가 일어나지 않습니다.
+
+### 4. 예약 생명주기
+
+`CONFIRMED → CANCELLED` 단방향 전이. soft delete 방식으로 `status`만 변경하고 재고 복원. 이미 취소된 예약 재취소 시 409.
 
 ## 프로젝트 구조
 
@@ -169,8 +152,8 @@ src/main/kotlin/com/trip/hotel/
 ├── domain/
 │   ├── entity/          Hotel, RoomType, Inventory, Reservation, ReservationStatus
 │   └── repository/      HotelRepository, RoomTypeRepository, InventoryRepository, ReservationRepository
-├── service/             InventoryService, ReservationService
-├── config/              OpenApiConfig
+├── service/             InventoryService, ReservationService, InventoryCounterService
+├── config/              OpenApiConfig, InventoryCounterInitializer
 ├── controller/          InventoryController, ReservationController
 ├── dto/
 │   ├── request/         CreateReservationRequest

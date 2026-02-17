@@ -24,6 +24,9 @@ import org.mockito.InjectMocks
 import org.mockito.Mock
 import org.mockito.junit.jupiter.MockitoExtension
 import org.mockito.kotlin.any
+import org.mockito.kotlin.eq
+import org.mockito.kotlin.never
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.math.BigDecimal
 import java.time.LocalDate
@@ -39,6 +42,9 @@ class ReservationServiceTest {
 
 	@Mock
 	private lateinit var roomTypeRepository: RoomTypeRepository
+
+	@Mock
+	private lateinit var inventoryCounterService: InventoryCounterService
 
 	@InjectMocks
 	private lateinit var reservationService: ReservationService
@@ -91,6 +97,7 @@ class ReservationServiceTest {
 			)
 
 		whenever(roomTypeRepository.findById(1L)).thenReturn(Optional.of(roomType))
+		whenever(inventoryCounterService.tryDecrement(eq(1L), any(), eq(1))).thenReturn(true)
 		whenever(inventoryRepository.findByRoomTypeIdAndDateRangeForUpdate(1L, checkInDate, checkOutDate))
 			.thenReturn(inventories)
 		whenever(reservationRepository.save(any<Reservation>())).thenReturn(savedReservation)
@@ -124,7 +131,7 @@ class ReservationServiceTest {
 	}
 
 	@Test
-	@DisplayName("재고 부족 시 예외")
+	@DisplayName("재고 부족 시 예외 (DB 레벨)")
 	fun createReservation_insufficientInventory() {
 		val request =
 			CreateReservationRequest(
@@ -142,12 +149,41 @@ class ReservationServiceTest {
 			)
 
 		whenever(roomTypeRepository.findById(1L)).thenReturn(Optional.of(roomType))
+		whenever(inventoryCounterService.tryDecrement(eq(1L), any(), eq(5))).thenReturn(true)
 		whenever(inventoryRepository.findByRoomTypeIdAndDateRangeForUpdate(1L, checkInDate, checkOutDate))
 			.thenReturn(inventories)
 
 		assertThrows<InsufficientInventoryException> {
 			reservationService.createReservation(request)
 		}
+
+		// DB 실패 시 카운터 보상 호출 검증
+		verify(inventoryCounterService).increment(eq(1L), any(), eq(5))
+	}
+
+	@Test
+	@DisplayName("카운터 거절 시 DB 호출 없이 즉시 예외")
+	fun createReservation_counterRejection_noDbAccess() {
+		val request =
+			CreateReservationRequest(
+				roomTypeId = 1,
+				guestName = "테스트유저1",
+				guestEmail = "testuser1@test.com",
+				checkInDate = checkInDate,
+				checkOutDate = checkOutDate,
+				numberOfRooms = 1
+			)
+
+		whenever(roomTypeRepository.findById(1L)).thenReturn(Optional.of(roomType))
+		whenever(inventoryCounterService.tryDecrement(eq(1L), any(), eq(1))).thenReturn(false)
+
+		assertThrows<InsufficientInventoryException> {
+			reservationService.createReservation(request)
+		}
+
+		// DB 접근이 전혀 없어야 함
+		verify(inventoryRepository, never()).findByRoomTypeIdAndDateRangeForUpdate(any(), any(), any())
+		verify(reservationRepository, never()).save(any<Reservation>())
 	}
 
 	@Test
@@ -182,7 +218,7 @@ class ReservationServiceTest {
 	}
 
 	@Test
-	@DisplayName("예약 취소 성공")
+	@DisplayName("예약 취소 성공 - 카운터 복원 검증")
 	fun cancelReservation_success() {
 		val reservation =
 			Reservation(
@@ -209,6 +245,9 @@ class ReservationServiceTest {
 		assertEquals(ReservationStatus.CANCELLED, response.status)
 		assertEquals(10, inventories[0].availableQuantity)
 		assertEquals(10, inventories[1].availableQuantity)
+
+		// 카운터 복원 호출 검증
+		verify(inventoryCounterService).increment(eq(1L), any(), eq(1))
 	}
 
 	@Test
