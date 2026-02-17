@@ -1,10 +1,10 @@
 plugins {
-	kotlin("jvm") version "1.9.25"
-	kotlin("plugin.spring") version "1.9.25"
-	id("org.springframework.boot") version "3.2.5"
-	id("io.spring.dependency-management") version "1.1.4"
-	kotlin("plugin.jpa") version "1.9.25"
-	id("org.jlleitschuh.gradle.ktlint") version "12.1.0"
+	alias(libs.plugins.kotlin.jvm)
+	alias(libs.plugins.kotlin.spring)
+	alias(libs.plugins.spring.boot)
+	alias(libs.plugins.spring.dependency.management)
+	alias(libs.plugins.kotlin.jpa)
+	alias(libs.plugins.ktlint)
 }
 
 group = "com.trip.hotel"
@@ -22,17 +22,19 @@ repositories {
 }
 
 dependencies {
-	implementation("org.springframework.boot:spring-boot-starter-data-jpa")
-	implementation("org.springframework.boot:spring-boot-starter-web")
-	implementation("org.springframework.boot:spring-boot-starter-validation")
-	implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
-	implementation("org.flywaydb:flyway-core")
-	implementation("org.jetbrains.kotlin:kotlin-reflect")
-	runtimeOnly("com.h2database:h2")
-	testImplementation("org.springframework.boot:spring-boot-starter-test")
-	testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
-	testImplementation("org.mockito.kotlin:mockito-kotlin:5.2.1")
-	testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+	implementation(libs.spring.boot.starter.data.jpa)
+	implementation(libs.spring.boot.starter.web)
+	implementation(libs.spring.boot.starter.validation)
+	implementation(libs.jackson.module.kotlin)
+	implementation(libs.flyway.core)
+	implementation(libs.kotlin.reflect)
+	implementation(libs.springdoc.openapi.webmvc.ui)
+	implementation(libs.commons.lang3)
+	runtimeOnly(libs.h2)
+	testImplementation(libs.spring.boot.starter.test)
+	testImplementation(libs.kotlin.test.junit5)
+	testImplementation(libs.mockito.kotlin)
+	testRuntimeOnly(libs.junit.platform.launcher)
 }
 
 kotlin {
@@ -51,23 +53,8 @@ tasks.withType<Test> {
 	useJUnitPlatform()
 }
 
-tasks.register("installGitHooks") {
-	description = "Git hooks 경로를 scripts/git-hooks로 설정"
-	group = "setup"
-	doLast {
-		exec {
-			commandLine("git", "config", "core.hooksPath", "scripts/git-hooks")
-		}
-		println("[setup] Git hooks 경로 설정 완료: scripts/git-hooks")
-	}
-}
-
-tasks.named("build") {
-	dependsOn("installGitHooks")
-}
-
 ktlint {
-	version.set("1.1.1")
+	version.set(libs.versions.ktlint.core.get())
 	android.set(false)
 	outputToConsole.set(true)
 	ignoreFailures.set(false)

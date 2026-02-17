@@ -1,0 +1,53 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./gradlew build:*)",
+      "Bash(./gradlew test:*)",
+      "Bash(./gradlew bootRun:*)",
+      "Bash(./gradlew clean:*)",
+      "Bash(./gradlew compileKotlin:*)",
+      "Bash(./gradlew ktlint*:*)",
+      "Bash(./gradlew:*)",
+      "Bash(java -version:*)",
+      "Bash(/usr/libexec/java_home:*)",
+      "Bash(JAVA_HOME=*:*)",
+      "Bash(curl:*)",
+      "Bash(git *:*)",
+      "Bash(kill:*)",
+      "Bash(mkdir:*)",
+      "Bash(ls:*)",
+      "Bash(chmod:*)",
+      "WebSearch",
+      "Bash(find:*)",
+      "Bash(cat:*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/check-secrets.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/post-edit-lint.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/post-edit-update-docs.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
