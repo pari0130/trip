@@ -1,4 +1,4 @@
-package com.trip.hotel.trip
+package com.trip.hotel
 
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.runApplication
