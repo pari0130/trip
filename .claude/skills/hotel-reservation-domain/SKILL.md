@@ -24,14 +24,16 @@ CONFIRMED → CANCELLED (단방향, 재활성화 불가)
 
 ## 검증 규칙
 
-| 필드 | 규칙 |
-|------|------|
-| roomTypeId | @NotNull |
-| guestName | @NotBlank |
-| guestEmail | @NotBlank, @Email |
-| checkInDate | @NotNull, @FutureOrPresent |
-| checkOutDate | @NotNull, @Future |
-| numberOfRooms | @Min(1) |
+| 필드         | 규칙                              |
+|--------------|-----------------------------------|
+| roomTypeId   | @NotNull                          |
+| guestName    | @NotBlank, @Size(max=255)         |
+| guestEmail   | @NotBlank, @Email, @Size(max=255) |
+| checkInDate  | @NotNull, @FutureOrPresent        |
+| checkOutDate | @NotNull, @Future                 |
+| numberOfRooms | @Min(1)                          |
+
+- **비즈니스 검증**: `require(checkInDate.isBefore(checkOutDate))` — Service 레이어에서 추가 검증
 
 ## 트랜잭션 규칙
 
@@ -41,11 +43,16 @@ CONFIRMED → CANCELLED (단방향, 재활성화 불가)
 
 ## 예외 체계
 
-| 예외 | HTTP | 발생 조건 |
-|------|------|----------|
-| RoomTypeNotFoundException | 404 | 존재하지 않는 룸 타입 |
-| ReservationNotFoundException | 404 | 존재하지 않는 예약 |
-| InsufficientInventoryException | 409 | 재고 부족 |
-| InvalidReservationStateException | 409 | 이미 취소된 예약 |
-| OptimisticLockingFailureException | 409 | 동시 수정 충돌 |
-| PessimisticLockingFailureException | 503 | 잠금 타임아웃 |
+| 예외                                    | HTTP | 발생 조건                        |
+|-----------------------------------------|------|----------------------------------|
+| MethodArgumentNotValidException         | 400  | 입력 유효성 검사 실패 (DTO 검증)  |
+| MissingServletRequestParameterException | 400  | 필수 쿼리 파라미터 누락           |
+| IllegalArgumentException                | 400  | 날짜 범위 오류 등 비즈니스 검증    |
+| MethodArgumentTypeMismatchException     | 400  | 파라미터 타입 변환 실패           |
+| RoomTypeNotFoundException               | 404  | 존재하지 않는 룸 타입             |
+| ReservationNotFoundException            | 404  | 존재하지 않는 예약                |
+| InsufficientInventoryException          | 409  | 재고 부족                        |
+| InvalidReservationStateException        | 409  | 이미 취소된 예약                  |
+| ObjectOptimisticLockingFailureException | 409  | 동시 수정 충돌                    |
+| Exception (fallback)                    | 500  | 예상치 못한 서버 오류             |
+| PessimisticLockException                | 503  | 잠금 타임아웃                     |

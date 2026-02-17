@@ -48,7 +48,7 @@
 - Swagger UI: http://localhost:8080/swagger-ui.html
 - H2 콘솔: http://localhost:8080/h2-console (JDBC URL: `jdbc:h2:mem:tripdb`, username: `sa`)
 
-## 설계 내용
+## API 설명
 
 ### 1. 재고 조회
 
@@ -87,18 +87,26 @@
 
 ### 5. 에러 처리
 
-| HTTP 상태 | 발생 조건 |
-|-----------|----------|
-| 400 | 입력 유효성 검사 실패 |
-| 404 | 존재하지 않는 룸 타입 또는 예약 |
-| 409 | 재고 부족, 이미 취소된 예약, 동시 수정 충돌 |
-| 503 | 잠금 타임아웃 (동시 접근 과부하) |
+| HTTP 상태 | 발생 조건 | 처리 예외 |
+|-----------|----------|----------|
+| 400 | 입력 유효성 검사 실패 (필수값 누락, 형식 오류) | `MethodArgumentNotValidException` |
+| 400 | 필수 쿼리 파라미터 누락 | `MissingServletRequestParameterException` |
+| 400 | 날짜 범위 오류 (체크인 ≥ 체크아웃) | `IllegalArgumentException` |
+| 400 | 파라미터 타입 변환 실패 (잘못된 날짜 형식 등) | `MethodArgumentTypeMismatchException` |
+| 404 | 존재하지 않는 룸 타입 또는 예약 | `RoomTypeNotFoundException`, `ReservationNotFoundException` |
+| 409 | 재고 부족 | `InsufficientInventoryException` |
+| 409 | 이미 취소된 예약 | `InvalidReservationStateException` |
+| 409 | 동시 수정 충돌 (@Version 불일치) | `ObjectOptimisticLockingFailureException` |
+| 500 | 예상치 못한 서버 오류 | `Exception` (fallback) |
+| 503 | 잠금 타임아웃 (동시 접근 과부하) | `PessimisticLockException` |
 
 > 상세 API 스펙은 Swagger UI 참조: http://localhost:8080/swagger-ui.html
 
 ## 설계 시 주요 고려 사항
 
 ### 1. 동시 예약 시 재고 정합성
+
+재고는 `totalQuantity`(전체 객실 수)와 `availableQuantity`(잔여 객실 수)로 관리됩니다. 예약 시 `availableQuantity`를 차감하고, 취소 시 복원합니다(`totalQuantity`를 초과하지 않도록 상한 제한).
 
 여러 사용자가 같은 룸 타입의 같은 날짜에 동시에 예약하면, 재고가 음수가 되거나 초과 판매될 수 있습니다.
 
@@ -155,12 +163,13 @@ CONFIRMED ──취소──→ CANCELLED (단방향, 재활성화 불가)
 ## 프로젝트 구조
 
 ```
-src/main/kotlin/com/trip/hotel/trip/
+src/main/kotlin/com/trip/hotel/
 ├── TripApplication.kt
 ├── domain/
 │   ├── entity/          Hotel, RoomType, Inventory, Reservation, ReservationStatus
 │   └── repository/      HotelRepository, RoomTypeRepository, InventoryRepository, ReservationRepository
 ├── service/             InventoryService, ReservationService
+├── config/              OpenApiConfig
 ├── controller/          InventoryController, ReservationController
 ├── dto/
 │   ├── request/         CreateReservationRequest

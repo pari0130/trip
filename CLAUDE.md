@@ -1,5 +1,33 @@
 # Trip - 호텔 예약 API 서버
 
+## 개발 원칙
+
+**모든 코드 작성, 수정, 리뷰 시 다음 스킬들을 자동으로 따릅니다**:
+
+### 필수 적용 스킬
+- **@clean-code** — 클린코드 원칙 (SOLID, 명확한 네이밍, 함수 단일 책임)
+- **@coding-conventions** — 패키지 구조, 레이어 규칙, Kotlin 컨벤션
+- **@code-review** — 코드 수정/커밋/PR 전 자체 검토 체크리스트
+  - 재고 관리 동시성 제어 검증
+  - 트랜잭션 처리 및 롤백 확인
+  - 에러 처리 완전성 검토
+  - 테스트 커버리지 확인
+
+### 도메인별 적용 스킬
+- **@hotel-inventory-domain** — 재고 관련 코드 작성 시
+- **@hotel-reservation-domain** — 예약 관련 코드 작성 시
+- **@spring-boot-jpa-concurrency** — 동시성 제어 필요 시 (재고 차감/복원)
+
+### 테스트 작성 시
+- **@kotlin-spring-testing** — 단위/통합/Controller/Repository 테스트 패턴
+- **@verification-loop** — 구현 완료 후 검증 프로세스
+
+### API 개발 시
+- **@api-design** — RESTful 설계, HTTP 상태 코드, 에러 응답 형식
+
+### 데이터베이스 작업 시
+- **@flyway-h2-patterns** — 마이그레이션 파일 작성/수정 시
+
 ## 빌드 & 실행
 
 ```bash
@@ -52,14 +80,17 @@
 - `flyway-h2-patterns` — DB 마이그레이션 패턴
 - `api-design` — REST API 설계 패턴
 - `verification-loop` — 빌드-테스트-검증 루프
+- `code-review` — 코드 리뷰 체크리스트
+- `test-coverage` — 테스트 커버리지 분석
 
 ### Commands (`.claude/commands/`)
-- `/plan` — 구현 계획 수립
-- `/tdd` — TDD 기반 구현
-- `/code-review` — 코드 리뷰
-- `/build-fix` — 빌드 에러 수정
-- `/verify` — 전체 검증
-- `/test-coverage` — 테스트 커버리지 분석
+워크플로우 참조 문서 (slash command 아님, 일반 명령으로 참조):
+- `plan.md` — 구현 계획 수립 워크플로우
+- `tdd.md` — TDD 기반 구현 가이드
+- `code-review.md` — 코드 리뷰 프로세스
+- `build-fix.md` — 빌드 에러 수정 절차
+- `verify.md` — 전체 검증 체크리스트
+- `test-coverage.md` → **Skills로 이동**
 
 ### Agents (`.claude/agents/`)
 - `planner` — 구현 계획: 무엇을/어떤 순서로 (Opus, read-only)

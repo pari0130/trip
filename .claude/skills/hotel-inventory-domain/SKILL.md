@@ -16,6 +16,8 @@ description: 호텔 재고 도메인 규칙 — 재고 모델, 제약조건, 차
 
 - **checkInDate(포함) ~ checkOutDate(미포함)**
 - SQL: `WHERE date >= checkInDate AND date < checkOutDate`
+- **사전 검증**: `require(checkInDate.isBefore(checkOutDate))` — Service 레이어에서 검증
+- **날짜 계산**: `ChronoUnit.DAYS.between()` 사용 필수 (`Period.days`는 월 경계에서 오류 발생)
 
 ## 차감 규칙
 
@@ -25,7 +27,9 @@ description: 호텔 재고 도메인 규칙 — 재고 모델, 제약조건, 차
 
 ```kotlin
 fun decreaseAvailableQuantity(quantity: Int) {
-    if (availableQuantity < quantity) throw IllegalStateException("재고 부족")
+    if (availableQuantity < quantity) {
+        throw IllegalStateException("재고 부족: date=$date, 요청=$quantity, 잔여=$availableQuantity")
+    }
     availableQuantity -= quantity
 }
 ```
