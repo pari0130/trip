@@ -1,10 +1,12 @@
 package com.trip.hotel.service
 
+import com.trip.hotel.domain.entity.Guest
 import com.trip.hotel.domain.entity.Hotel
 import com.trip.hotel.domain.entity.Inventory
 import com.trip.hotel.domain.entity.Reservation
 import com.trip.hotel.domain.entity.ReservationStatus
 import com.trip.hotel.domain.entity.RoomType
+import com.trip.hotel.domain.repository.GuestRepository
 import com.trip.hotel.domain.repository.InventoryRepository
 import com.trip.hotel.domain.repository.ReservationRepository
 import com.trip.hotel.domain.repository.RoomTypeRepository
@@ -44,6 +46,9 @@ class ReservationServiceTest {
 	private lateinit var roomTypeRepository: RoomTypeRepository
 
 	@Mock
+	private lateinit var guestRepository: GuestRepository
+
+	@Mock
 	private lateinit var inventoryCounterService: InventoryCounterService
 
 	@InjectMocks
@@ -51,6 +56,7 @@ class ReservationServiceTest {
 
 	private lateinit var hotel: Hotel
 	private lateinit var roomType: RoomType
+	private lateinit var guest: Guest
 	private val checkInDate: LocalDate = LocalDate.now().plusDays(1)
 	private val checkOutDate: LocalDate = LocalDate.now().plusDays(3)
 
@@ -65,6 +71,7 @@ class ReservationServiceTest {
 				price = BigDecimal("350000"),
 				maxOccupancy = 2
 			)
+		guest = Guest(id = 1, name = "테스트유저1", email = "testuser1@test.com")
 	}
 
 	@Test
@@ -89,8 +96,7 @@ class ReservationServiceTest {
 			Reservation(
 				id = 1,
 				roomType = roomType,
-				guestName = "테스트유저1",
-				guestEmail = "testuser1@test.com",
+				guest = guest,
 				checkInDate = checkInDate,
 				checkOutDate = checkOutDate,
 				numberOfRooms = 1
@@ -100,6 +106,8 @@ class ReservationServiceTest {
 		whenever(inventoryCounterService.tryDecrement(eq(1L), any(), eq(1))).thenReturn(true)
 		whenever(inventoryRepository.findByRoomTypeIdAndDateRangeForUpdate(1L, checkInDate, checkOutDate))
 			.thenReturn(inventories)
+		whenever(guestRepository.findByEmail("testuser1@test.com")).thenReturn(null)
+		whenever(guestRepository.save(any<Guest>())).thenReturn(guest)
 		whenever(reservationRepository.save(any<Reservation>())).thenReturn(savedReservation)
 
 		// when
@@ -110,6 +118,49 @@ class ReservationServiceTest {
 		assertEquals(1L, response.reservationId)
 		assertEquals("테스트유저1", response.guestName)
 		assertEquals(ReservationStatus.CONFIRMED, response.status)
+	}
+
+	@Test
+	@DisplayName("동일 이메일 Guest 재사용")
+	fun createReservation_reuseExistingGuest() {
+		// given
+		val request =
+			CreateReservationRequest(
+				roomTypeId = 1,
+				guestName = "테스트유저1",
+				guestEmail = "testuser1@test.com",
+				checkInDate = checkInDate,
+				checkOutDate = checkOutDate,
+				numberOfRooms = 1
+			)
+		val inventories =
+			listOf(
+				Inventory(id = 1, roomType = roomType, date = checkInDate, totalQuantity = 10, availableQuantity = 10),
+				Inventory(id = 2, roomType = roomType, date = checkInDate.plusDays(1), totalQuantity = 10, availableQuantity = 10)
+			)
+		val savedReservation =
+			Reservation(
+				id = 1,
+				roomType = roomType,
+				guest = guest,
+				checkInDate = checkInDate,
+				checkOutDate = checkOutDate,
+				numberOfRooms = 1
+			)
+
+		whenever(roomTypeRepository.findById(1L)).thenReturn(Optional.of(roomType))
+		whenever(inventoryCounterService.tryDecrement(eq(1L), any(), eq(1))).thenReturn(true)
+		whenever(inventoryRepository.findByRoomTypeIdAndDateRangeForUpdate(1L, checkInDate, checkOutDate))
+			.thenReturn(inventories)
+		whenever(guestRepository.findByEmail("testuser1@test.com")).thenReturn(guest)
+		whenever(reservationRepository.save(any<Reservation>())).thenReturn(savedReservation)
+
+		// when
+		val response = reservationService.createReservation(request)
+
+		// then
+		assertEquals("테스트유저1", response.guestName)
+		verify(guestRepository, never()).save(any<Guest>())
 	}
 
 	@Test
@@ -193,8 +244,7 @@ class ReservationServiceTest {
 			Reservation(
 				id = 1,
 				roomType = roomType,
-				guestName = "테스트유저1",
-				guestEmail = "testuser1@test.com",
+				guest = guest,
 				checkInDate = checkInDate,
 				checkOutDate = checkOutDate,
 				numberOfRooms = 1
@@ -224,8 +274,7 @@ class ReservationServiceTest {
 			Reservation(
 				id = 1,
 				roomType = roomType,
-				guestName = "테스트유저1",
-				guestEmail = "testuser1@test.com",
+				guest = guest,
 				checkInDate = checkInDate,
 				checkOutDate = checkOutDate,
 				numberOfRooms = 1
@@ -292,8 +341,7 @@ class ReservationServiceTest {
 			Reservation(
 				id = 1,
 				roomType = roomType,
-				guestName = "테스트유저1",
-				guestEmail = "testuser1@test.com",
+				guest = guest,
 				checkInDate = checkInDate,
 				checkOutDate = checkOutDate,
 				numberOfRooms = 1,

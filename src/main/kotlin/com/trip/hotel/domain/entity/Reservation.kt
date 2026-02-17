@@ -26,10 +26,9 @@ class Reservation(
 	@ManyToOne(fetch = FetchType.LAZY)
 	@JoinColumn(name = "room_type_id", nullable = false)
 	val roomType: RoomType,
-	@Column(nullable = false)
-	val guestName: String,
-	@Column(nullable = false)
-	val guestEmail: String,
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "guest_id", nullable = false)
+	val guest: Guest,
 	@Column(nullable = false)
 	val checkInDate: LocalDate,
 	@Column(nullable = false)

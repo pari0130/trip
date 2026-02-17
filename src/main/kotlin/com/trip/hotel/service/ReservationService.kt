@@ -1,8 +1,10 @@
 package com.trip.hotel.service
 
+import com.trip.hotel.domain.entity.Guest
 import com.trip.hotel.domain.entity.Inventory
 import com.trip.hotel.domain.entity.Reservation
 import com.trip.hotel.domain.entity.ReservationStatus
+import com.trip.hotel.domain.repository.GuestRepository
 import com.trip.hotel.domain.repository.InventoryRepository
 import com.trip.hotel.domain.repository.ReservationRepository
 import com.trip.hotel.domain.repository.RoomTypeRepository
@@ -26,6 +28,7 @@ class ReservationService(
 	private val reservationRepository: ReservationRepository,
 	private val inventoryRepository: InventoryRepository,
 	private val roomTypeRepository: RoomTypeRepository,
+	private val guestRepository: GuestRepository,
 	private val inventoryCounterService: InventoryCounterService
 ) {
 	/**
@@ -70,12 +73,13 @@ class ReservationService(
 			validateInventory(inventories, request)
 			inventories.forEach { it.decreaseAvailableQuantity(request.numberOfRooms) }
 
+			val guest = findOrCreateGuest(request.guestName, request.guestEmail)
+
 			val reservation =
 				reservationRepository.save(
 					Reservation(
 						roomType = roomType,
-						guestName = request.guestName,
-						guestEmail = request.guestEmail,
+						guest = guest,
 						checkInDate = request.checkInDate,
 						checkOutDate = request.checkOutDate,
 						numberOfRooms = request.numberOfRooms
@@ -133,6 +137,12 @@ class ReservationService(
 
 		return ReservationResponse.from(reservation)
 	}
+
+	/** 이메일로 기존 Guest 조회, 없으면 새로 생성. */
+	private fun findOrCreateGuest(
+		name: String,
+		email: String
+	): Guest = guestRepository.findByEmail(email) ?: guestRepository.save(Guest(name = name, email = email))
 
 	/** 재고 검증. 기간 내 모든 날짜에 요청 수량 이상의 잔여 재고가 있는지 확인. */
 	private fun validateInventory(
