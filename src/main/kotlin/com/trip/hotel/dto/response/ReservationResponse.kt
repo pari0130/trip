@@ -7,7 +7,7 @@ import java.time.LocalDateTime
 
 /** 예약 응답 DTO. Reservation 엔티티를 API 응답 형태로 변환한다. */
 data class ReservationResponse(
-	val id: Long,
+	val reservationId: Long,
 	val roomTypeId: Long,
 	val roomTypeName: String,
 	val guestName: String,
@@ -23,7 +23,7 @@ data class ReservationResponse(
 		/** 엔티티 → DTO 변환 팩토리 메서드. */
 		fun from(reservation: Reservation): ReservationResponse =
 			ReservationResponse(
-				id = reservation.id,
+				reservationId = reservation.id,
 				roomTypeId = reservation.roomType.id,
 				roomTypeName = reservation.roomType.name,
 				guestName = reservation.guestName,

@@ -42,7 +42,7 @@ class ReservationControllerTest {
 
 	private fun sampleResponse() =
 		ReservationResponse(
-			id = 1, roomTypeId = 1, roomTypeName = "그랜드 디럭스",
+			reservationId = 1, roomTypeId = 1, roomTypeName = "그랜드 디럭스",
 			guestName = "테스트유저1", guestEmail = "testuser1@test.com",
 			checkInDate = checkInDate, checkOutDate = checkOutDate,
 			numberOfRooms = 1, status = ReservationStatus.CONFIRMED,
@@ -68,7 +68,7 @@ class ReservationControllerTest {
 				.content(objectMapper.writeValueAsString(request))
 		)
 			.andExpect(status().isCreated)
-			.andExpect(jsonPath("$.id").value(1))
+			.andExpect(jsonPath("$.reservationId").value(1))
 			.andExpect(jsonPath("$.guestName").value("테스트유저1"))
 			.andExpect(jsonPath("$.status").value("CONFIRMED"))
 	}
@@ -125,7 +125,7 @@ class ReservationControllerTest {
 
 		mockMvc.perform(get("/api/v1/reservations/1"))
 			.andExpect(status().isOk)
-			.andExpect(jsonPath("$.id").value(1))
+			.andExpect(jsonPath("$.reservationId").value(1))
 			.andExpect(jsonPath("$.roomTypeName").value("그랜드 디럭스"))
 	}
 

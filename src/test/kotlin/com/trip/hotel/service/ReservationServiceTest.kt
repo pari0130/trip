@@ -100,7 +100,7 @@ class ReservationServiceTest {
 
 		// then
 		assertNotNull(response)
-		assertEquals(1L, response.id)
+		assertEquals(1L, response.reservationId)
 		assertEquals("테스트유저1", response.guestName)
 		assertEquals(ReservationStatus.CONFIRMED, response.status)
 	}
@@ -167,7 +167,7 @@ class ReservationServiceTest {
 
 		val response = reservationService.getReservation(1L)
 
-		assertEquals(1L, response.id)
+		assertEquals(1L, response.reservationId)
 		assertEquals("그랜드 디럭스", response.roomTypeName)
 	}
 

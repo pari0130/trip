@@ -72,15 +72,16 @@
 - 해당 날짜 범위의 재고를 `SELECT ... FOR UPDATE`로 잠금 후 차감
 - 모든 날짜에 `availableQuantity >= numberOfRooms` 검증 — 하나라도 부족하면 **전체 실패** (부분 차감 없음)
 - 재고 차감 + 예약 저장을 하나의 트랜잭션으로 원자적 처리
+- 응답에 `reservationId`가 포함되며, 이 값으로 조회/취소를 수행
 
 ### 3. 예약 조회
 
-- `GET /api/v1/reservations/{id}`
+- `GET /api/v1/reservations/{reservationId}`
 - 잠금 없이 단순 조회
 
 ### 4. 예약 취소
 
-- `PATCH /api/v1/reservations/{id}/cancel`
+- `PATCH /api/v1/reservations/{reservationId}/cancel`
 - `CONFIRMED → CANCELLED` 단방향 전이 (재활성화 불가)
 - 재고 복원 시 `totalQuantity` 초과 방지
 - soft delete 방식: `status`만 변경, 레코드는 유지
