@@ -28,7 +28,6 @@ CREATE TABLE inventory (
     date DATE NOT NULL,                      -- 재고 날짜
     total_quantity INT NOT NULL,             -- 전체 객실 수
     available_quantity INT NOT NULL,         -- 잔여 객실 수 (예약 시 차감, 취소 시 복원)
-    version BIGINT NOT NULL DEFAULT 0,       -- Optimistic Lock용 버전 (동시 수정 감지)
     CONSTRAINT fk_inventory_room_type FOREIGN KEY (room_type_id) REFERENCES room_type(id),
     CONSTRAINT uk_inventory_room_type_date UNIQUE (room_type_id, date) -- 동일 룸타입+날짜 중복 방지
 );

@@ -10,13 +10,12 @@ import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
 import jakarta.persistence.UniqueConstraint
-import jakarta.persistence.Version
 import java.time.LocalDate
 
 /**
  * 재고 엔티티. 룸 타입별 + 날짜별 재고를 관리한다.
  * - uniqueConstraints: 동일 룸타입 + 날짜 조합의 중복 방지
- * - @Version: Optimistic Lock으로 동시 수정 시 충돌 감지 (보조 안전장치)
+ * - 동시성 제어: Pessimistic Lock (FOR UPDATE) 사용
  */
 @Entity
 @Table(uniqueConstraints = [UniqueConstraint(columnNames = ["room_type_id", "date"])])
@@ -32,10 +31,7 @@ class Inventory(
 	@Column(nullable = false)
 	val totalQuantity: Int,
 	@Column(nullable = false)
-	var availableQuantity: Int,
-	@Version
-	@Column(nullable = false)
-	var version: Long = 0
+	var availableQuantity: Int
 ) {
 	/** 재고 차감. 요청 수량이 잔여보다 많으면 예외 발생. */
 	fun decreaseAvailableQuantity(quantity: Int) {

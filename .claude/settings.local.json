@@ -19,7 +19,15 @@
       "Bash(chmod:*)",
       "WebSearch",
       "Bash(find:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch:*)",
+      "Bash(git update-index:*)",
+      "Bash(gh auth status:*)",
+      "Bash(ssh:*)",
+      "Bash(git branch:*)",
+      "Bash(git gc:*)",
+      "WebFetch(domain:www.kyungyeon.dev)",
+      "WebFetch(domain:juyeongpark.tistory.com)"
     ]
   },
   "hooks": {

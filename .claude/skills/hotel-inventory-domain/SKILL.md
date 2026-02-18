@@ -44,13 +44,24 @@ fun increaseAvailableQuantity(quantity: Int) {
 }
 ```
 
-## 동시성 제어 패턴
+## 동시성 제어 패턴 (2중 전략)
+
+**1차 필터: In-Memory 카운터**
+- DB 접근 전 사전 차단
+- `AtomicInteger.addAndGet()`로 원자적 차감
+- 실패 시 즉시 거절 (DB 접근 없음)
+- 성공 후 DB 실패 시 보상(복원)
+
+**2차 최종 보장: Pessimistic Lock**
 
 | 제어 | 역할 | 구현 |
 |------|------|------|
-| Pessimistic Lock (주) | 동시 접근 직렬화 | `@Lock(PESSIMISTIC_WRITE)` + `ORDER BY date ASC` |
-| Optimistic Lock (보조) | 추가 안전장치 | `@Version` 필드 |
+| Pessimistic Lock | DB 수준 정합성 보장 | `@Lock(PESSIMISTIC_WRITE)` + `ORDER BY date ASC` |
 
 - `ORDER BY date ASC` 필수 — 데드락 방지 (잠금 순서 일관)
 - 재고 변경 시 반드시 `findByRoomTypeIdAndDateRangeForUpdate` 사용
 - 조회만 할 때는 잠금 없이 `@Transactional(readOnly = true)`
+
+**핵심 원칙:**
+- 카운터는 힌트 (성능 최적화)
+- DB가 최종 정합성 원천 (Source of Truth)

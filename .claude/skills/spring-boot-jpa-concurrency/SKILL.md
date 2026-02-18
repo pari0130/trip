@@ -1,6 +1,6 @@
 ---
 name: spring-boot-jpa-concurrency
-description: Spring Boot + JPA 환경에서의 동시성 제어 패턴. Pessimistic Lock, Optimistic Lock, 트랜잭션 경계 설정.
+description: Spring Boot + JPA 환경에서의 동시성 제어 패턴. Pessimistic Lock (2중 제어), 트랜잭션 경계 설정.
 ---
 
 # Spring Boot JPA 동시성 제어 패턴
@@ -35,27 +35,36 @@ Thread A: BEGIN → SELECT FOR UPDATE (lock 획득) → 재고 확인 → 차감
 Thread B: BEGIN → SELECT FOR UPDATE (대기) → ... → lock 획득 → 재고 확인 → 부족 → ROLLBACK
 ```
 
-## Optimistic Lock (낙관적 잠금)
+## 2중 동시성 제어 전략
 
-`@Version` 필드로 업데이트 시점에 충돌을 감지. Pessimistic Lock의 보조 안전장치.
+### In-Memory 카운터 (1차 필터)
 
-### Entity 정의
+DB 접근 전 사전 차단으로 불필요한 잠금 경합 방지.
 
 ```kotlin
-@Entity
-class Inventory(
-    @Version
-    @Column(nullable = false)
-    var version: Long = 0
-)
+@Service
+class InventoryCounterService {
+    private val counters = ConcurrentHashMap<String, AtomicInteger>()
+
+    fun tryDecrement(roomTypeId: Long, dates: List<LocalDate>, quantity: Int): Boolean {
+        // AtomicInteger.addAndGet()으로 원자적 차감
+        // 음수 발생 시 즉시 복원 후 false 반환
+    }
+}
 ```
 
-### 동작 방식
+**핵심:**
+- `ConcurrentHashMap` + `AtomicInteger`로 Race Condition 차단
+- 실패 시 DB 접근 없이 즉시 거절 → 성능 향상
+- 카운터는 힌트, DB가 최종 정합성 보장
 
-1. 엔티티 조회 시 version 값 읽음
-2. JPA dirty checking으로 UPDATE 발생 시 `WHERE version = ?` 포함
-3. 다른 트랜잭션이 먼저 수정했으면 `OptimisticLockException` 발생
-4. version은 JPA가 자동 증가시킴 — 수동 변경 금지
+### Pessimistic Lock (2차 최종 보장)
+
+카운터 통과 후 DB 수준에서 순차 처리로 정합성 보장.
+
+**주의:**
+- 카운터만으로는 정합성 보장 안 됨
+- 반드시 DB Pessimistic Lock으로 최종 검증 필요
 
 ## 트랜잭션 경계 설정
 
@@ -80,8 +89,8 @@ class ReservationService {
 
 | 예외 | HTTP 상태 | 의미 |
 |------|----------|------|
-| OptimisticLockException | 409 Conflict | 동시 수정 충돌 |
 | PessimisticLockException | 503 Service Unavailable | 잠금 획득 타임아웃 |
+| InsufficientInventoryException | 409 Conflict | 재고 부족 (카운터 또는 DB 검증 실패) |
 
 ## JPQL 안전 규칙
 
@@ -91,10 +100,12 @@ class ReservationService {
 
 ## 체크리스트
 
-- [ ] 재고 변경 시 Pessimistic Lock 사용
-- [ ] ORDER BY로 일관된 잠금 순서 보장
+- [ ] In-Memory 카운터로 사전 필터링 (성능 최적화)
+- [ ] 재고 변경 시 Pessimistic Lock 사용 (정합성 보장)
+- [ ] ORDER BY로 일관된 잠금 순서 보장 (데드락 방지)
 - [ ] 잠금 타임아웃 설정 (5초)
-- [ ] @Version 필드로 이중 안전장치
+- [ ] 카운터 실패 시 DB 접근 없이 즉시 거절
+- [ ] DB 실패 시 카운터 보상 (복원)
 - [ ] 읽기 전용 API에는 잠금 미사용
 - [ ] JPQL 파라미터 바인딩 사용 (문자열 연결 금지)
 - [ ] 동시성 테스트로 정합성 검증

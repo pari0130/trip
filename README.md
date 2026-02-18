@@ -97,7 +97,6 @@
 | 404 | 존재하지 않는 룸 타입 또는 예약 | `RoomTypeNotFoundException`, `ReservationNotFoundException` |
 | 409 | 재고 부족 | `InsufficientInventoryException` |
 | 409 | 이미 취소된 예약 | `InvalidReservationStateException` |
-| 409 | 동시 수정 충돌 (@Version 불일치) | `ObjectOptimisticLockingFailureException` |
 | 500 | 예상치 못한 서버 오류 | `Exception` (fallback) |
 | 503 | 잠금 타임아웃 (동시 접근 과부하) | `PessimisticLockException` |
 
@@ -107,14 +106,16 @@
 
 ### 1. 동시 예약 시 재고 정합성
 
-| 제어 방식 | 역할 | 구현 |
-|-----------|------|------|
-| **Pessimistic Lock** (주) | 동시 접근을 직렬화하여 순차 처리 | `SELECT ... FOR UPDATE` + `ORDER BY date ASC` |
-| **Optimistic Lock** (보조) | 향후 잠금 없는 경로 추가 시 lost update 방지 | `@Version` 컬럼 |
+**2중 동시성 제어 전략:**
+
+| 제어 방식                                  | 역할 | 구현 |
+|----------------------------------------|------|------|
+| **In-Memory 카운터** (1차 필터, redis 처럼 생각) | DB 접근 전 사전 차단으로 불필요한 잠금 경합 방지 | `ConcurrentHashMap` + `AtomicInteger` |
+| **Pessimistic Lock** (최종 보장)           | DB 수준에서 순차 처리로 정합성 보장 | `SELECT ... FOR UPDATE` + `ORDER BY date ASC` |
 
 - `FOR UPDATE`로 재고 행을 잠그고, `ORDER BY date ASC`로 잠금 순서를 통일하여 데드락을 방지합니다.
 - 잠금 타임아웃 5초 (`jakarta.persistence.lock.timeout=5000`), 초과 시 503 응답.
-- `@Version`은 현재 충돌이 발생할 경로가 없지만, `FOR UPDATE` 없이 재고를 수정하는 코드가 추가될 때를 대비한 방어적 안전장치입니다.
+- In-Memory 카운터는 성능 최적화 레이어이며, DB가 유일한 정합성 입니다.
 
 ### 2. 대량 트래픽 대비: Cache 카운터 Pre-Filter
 
@@ -132,7 +133,7 @@
 Redis에서는 `DECR`(단일 키) / Lua 스크립트(다중 키), 본 구현에서는 `AtomicInteger.addAndGet()`(CAS)으로 동일 보장.
 
 **설계 제약**:
-- 카운터는 힌트이며, DB가 유일한 정합성 원천 — 카운터 통과 후에도 반드시 `FOR UPDATE`로 최종 검증
+- 카운터는 힌트이며, DB가 유일한 정합성 — 카운터 통과 후에도 반드시 `FOR UPDATE`로 최종 검증
 - 다중 날짜 중간 실패 시 이미 차감한 날짜를 명시적으로 복원 (DB는 자동 롤백되지만 카운터는 트랜잭션 밖)
 - 로컬 `AtomicInteger`는 단일 인스턴스 전용 — 다중 인스턴스 시 Redis `DECR`로 교체 필요 (`tryDecrement`/`increment` 인터페이스 유지로 교체 범위 한정)
 
@@ -163,9 +164,9 @@ src/main/kotlin/com/trip/hotel/
 src/main/resources/
 ├── application.properties
 └── db/migration/
-    ├── V1__create_schema.sql      DDL (hotel, room_type, inventory, reservation)
-    ├── V2__insert_sample_data.sql  시드 데이터 (호텔 2, 룸타입 5, 30일 재고)
-    └── V3__create_guest_table.sql  guest 테이블 생성 + reservation FK 마이그레이션
+    ├── V1__create_schema.sql                DDL (hotel, room_type, inventory, reservation)
+    ├── V2__insert_sample_data.sql           시드 데이터 (호텔 2, 룸타입 5, 30일 재고)
+    └── V3__create_guest_table.sql           guest 테이블 생성 + reservation FK 마이그레이션
 ```
 
 | 레이어 | 역할 |
@@ -236,6 +237,56 @@ hotel (1) ──── (N) room_type (1) ──── (N) inventory
 | `inventory` | 날짜별 재고 (unique: room_type_id + date) |
 | `reservation` | 예약 (soft delete: CONFIRMED/CANCELLED) |
 | `guest` | 투숙객 (email UNIQUE, 동일 이메일 시 재사용) |
+
+## 추가 고려사항 (결제 단계 추가 시 향후 확장)
+
+> 참고: [커머스 재고 시스템 설계](https://www.kyungyeon.dev/posts/132/)
+
+### 1. 예약과 홀드 분리
+
+현재는 예약 즉시 확정(`CONFIRMED`)하지만, 결제가 추가되면 **"예약 토큰 발급 → 결제 → 확정"** 2단계로 분리해야 합니다. 핵심은 **재고 차감을 짧고 빠른 경로(Hold)에서 먼저 수행**하고, 결제 완료 시 확정하는 것입니다.
+
+- Hold 시 재고 선차감 + TTL(10분) 설정 → 만료 시 자동 복원
+- 상태: `PENDING` → `CONFIRMED` / `EXPIRED`
+- 병목이 되는 row에 락이 오래 걸리는 구조를 피해야 하므로, Hold 처리는 Redis 원자 연산으로 빠르게, DB 확정은 결제 완료 후 비동기로 수행
+
+### 2. 멀티 인스턴스: In-Memory → Redis 전환
+
+현재 `AtomicInteger` 카운터는 단일 서버 전용입니다. 다중 인스턴스에서는 Redis `DECRBY` + Lua 스크립트로 교체하되, `tryDecrement`/`increment` 인터페이스를 유지하면 교체 범위가 카운터 서비스 내부로 한정됩니다. Redis 장애 시 DB 직행 Fallback을 두면 정합성은 DB Lock이 보장합니다.
+
+### 3. 동시성 병목 완화
+
+재고 100개에 10,000건이 몰리면 단일 row `FOR UPDATE`가 병목이 됩니다.
+
+- **버킷 샤딩**: 재고 row를 N개로 분할(예: 10개 x 10), 요청을 분산하여 락 경합 감소
+- **대기열(Queue)**: 요청을 큐에 적재 후 순차 처리, DB 보호 확실하지만 실시간 응답 UX 설계 필요
+- **Redis 선차감**: 현재 구현과 동일한 아이디어. 대부분을 Redis에서 걸러내고 DB 진입량 최소화
+
+### 4. 중복 요청 방지 (다층 검증)
+
+> 참고: [결제 중복 방지 사례](https://juyeongpark.tistory.com/182)
+
+단일 레이어로는 동시 요청 시 검증~처리 사이 틈이 생깁니다. 방어를 계층화해야 합니다.
+
+- **1차 — Redis 분산 락**: `SET NX + TTL(5s)`로 동일 요청 키에 대해 하나만 진입 허용. 미들웨어 레벨에서 중복 차단
+- **2차 — Idempotency Key**: 클라이언트가 UUID를 헤더로 전달, 서버가 처리 여부를 확인하여 중복 요청 시 이전 응답 반환. DB `UNIQUE` 제약으로 최종 안전망
+- **3차 — 서비스 레이어 검증**: 트랜잭션 내에서 상태·금액 등 비즈니스 규칙 재검증
+
+### 5. 기타
+
+- **Reconciliation**: 매일 `총재고 - 확정예약수량`을 검증하여 불일치 자동 보정
+- **Read Replica**: 조회는 Replica, 변경은 Master로 분리
+
+### 설계 원칙 요약
+
+| 항목 | 현재 | 확장 시 |
+|------|------|---------|
+| 정합성 | DB Pessimistic Lock | 동일 (불변) |
+| 성능 필터 | In-Memory 카운터 | Redis 카운터 |
+| 예약 모델 | 즉시 확정 | Hold(선차감) → 결제 → 확정 |
+| 병목 완화 | 단일 row Lock | 버킷 샤딩 / 대기열 |
+| 중복 방지 | 없음 | Redis 분산 락 + Idempotency Key |
+
 
 ## AI 어시스턴트 설정
 

@@ -55,7 +55,7 @@
 
 - 재고 모델/차감/복원/동시성 → `.claude/skills/hotel-inventory-domain`
 - 예약 생명주기/상태 전이/검증/예외 → `.claude/skills/hotel-reservation-domain`
-- Pessimistic/Optimistic Lock 패턴 → `.claude/skills/spring-boot-jpa-concurrency`
+- Pessimistic Lock 패턴 (2중 동시성 제어) → `.claude/skills/spring-boot-jpa-concurrency`
 
 ## 금지 사항
 - 하드코딩된 시크릿 금지 (application.properties 또는 환경변수 사용)
@@ -91,11 +91,3 @@
 - `build-fix.md` — 빌드 에러 수정 절차
 - `verify.md` — 전체 검증 체크리스트
 - `test-coverage.md` → **Skills로 이동**
-
-### Agents (`.claude/agents/`)
-- `planner` — 구현 계획: 무엇을/어떤 순서로 (Opus, read-only)
-- `architect` — 설계 판단: 왜/트레이드오프 (Opus, read-only)
-- `tdd-guide` — TDD 구현 (Sonnet)
-- `code-reviewer` — 코드 리뷰 (Sonnet)
-- `security-reviewer` — 보안 리뷰 (Sonnet)
-- `build-error-resolver` — 빌드 에러 수정 (Sonnet)
